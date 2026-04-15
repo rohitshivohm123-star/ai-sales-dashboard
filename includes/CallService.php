@@ -107,7 +107,16 @@ class CallService {
         $twilioPhone = DB::getConfig('twilio_phone_number');
 
         if ($twilioSid && $twilioToken && $twilioPhone) {
-            $result = self::makeTwilioCall($lead, $callSid, $twilioSid, $twilioToken, $twilioPhone);
+            $result = self::makeTwilioCall($lead, $callSid, $logId, $twilioSid, $twilioToken, $twilioPhone);
+
+            // If provider call could not be created, fail the call log immediately
+            if (empty($result['success'])) {
+                DB::execute(
+                    'UPDATE call_logs SET status = "failed", ended_at = NOW() WHERE id = ?',
+                    [$logId]
+                );
+                DB::execute('UPDATE leads SET status = "failed" WHERE id = ?', [$leadId]);
+            }
         } else {
             // MOCK call simulation
             $result = self::mockCall($lead, $logId);
@@ -119,7 +128,7 @@ class CallService {
     // -------------------------------------------------------
     // Real Twilio call
     // -------------------------------------------------------
-    private static function makeTwilioCall(array $lead, string $callSid, string $sid, string $token, string $from): array {
+    private static function makeTwilioCall(array $lead, string $callSid, int $logId, string $sid, string $token, string $from): array {
         $to = formatPhone($lead['phone']);
         $twimlUrl = BASE_URL . '/api/twiml.php?lead_id=' . $lead['id'];
 
@@ -129,6 +138,8 @@ class CallService {
             'Url'    => $twimlUrl,
             'Method' => 'POST',
             'StatusCallback' => BASE_URL . '/api/call_callback.php',
+            'StatusCallbackMethod' => 'POST',
+            'StatusCallbackEvent'  => ['initiated', 'ringing', 'answered', 'completed'],
         ]);
 
         $ch = curl_init("https://api.twilio.com/2010-04-01/Accounts/{$sid}/Calls.json");
@@ -146,10 +157,7 @@ class CallService {
         $data = json_decode($response, true);
 
         if ($httpCode === 201 && isset($data['sid'])) {
-            DB::execute(
-                'UPDATE call_logs SET call_sid = ?, status = "calling" WHERE id = ?',
-                [$data['sid'], DB::fetchOne('SELECT id FROM call_logs WHERE call_sid = ?', [$callSid])['id'] ?? 0]
-            );
+            DB::execute('UPDATE call_logs SET call_sid = ?, status = "calling" WHERE id = ?', [$data['sid'], $logId]);
             return ['success' => true, 'provider' => 'twilio', 'sid' => $data['sid']];
         }
 

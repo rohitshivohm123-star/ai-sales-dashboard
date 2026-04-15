@@ -44,10 +44,12 @@ if ($log) {
     );
 }
 
-// Update lead score and status
+// Update lead score only.
+// Lead status lifecycle is handled by call status callback to avoid
+// conflicting states during/after call completion.
 DB::execute(
-    'UPDATE leads SET status = ?, score = ? WHERE id = ?',
-    [$score, match($score) { 'hot' => 90, 'warm' => 60, 'cold' => 20 }, $leadId]
+    'UPDATE leads SET score = ? WHERE id = ?',
+    [match($score) { 'hot' => 90, 'warm' => 60, 'cold' => 20 }, $leadId]
 );
 
 http_response_code(200);

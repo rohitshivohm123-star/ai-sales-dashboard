@@ -74,6 +74,7 @@ if (!defined('SKIP_SESSION_AUTH')) {
     // List of files that don't require authentication
     $public_files = [
         'twiml.php',
+        'call_callback.php',
         'record_callback.php',
         'transcribe_callback.php',
         'webhook.php'
